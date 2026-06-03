@@ -1,59 +1,55 @@
-import { StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { Note } from "../types/note";
+import { formatNoteDate } from "../utils/date";
 
 type NoteCardProps = {
   note: Note;
+  onPress: () => void;
 };
 
-export function NoteCard({ note }: NoteCardProps) {
-  return (
-    <View style={styles.card}>
-      <Text style={styles.title}>{note.title.trim() || "Untitled"}</Text>
+export function NoteCard({ note, onPress }: NoteCardProps) {
+  const title = note.title.trim() || "Untitled Note";
+  const preview = note.body.trim() || "No additional text";
 
-      <Text style={styles.body} numberOfLines={2}>
-        {note.body.trim() || "No description"}
+  return (
+    <Pressable style={styles.card} onPress={onPress}>
+      <View style={styles.header}>
+        <Text style={styles.title} numberOfLines={1}>
+          {note.pinned ? "📌 " : ""}
+          {title}
+        </Text>
+      </View>
+
+      <Text style={styles.preview} numberOfLines={2}>
+        {preview}
       </Text>
-    </View>
+
+      <Text style={styles.date}>{formatNoteDate(note.updatedAt)}</Text>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    padding: 16,
-    borderRadius: 14,
-    backgroundColor: "#1E1E1E",
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#ddd",
+  },
+  header: {
+    marginBottom: 4,
   },
   title: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: "700",
-    color: "#FFFFFF",
-    marginBottom: 6,
   },
-  body: {
+  preview: {
     fontSize: 14,
-    color: "#AAAAAA",
+    color: "#666",
+    lineHeight: 20,
   },
-
-  noteRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    width: "100%",
-    marginBottom: 12,
-    gap: 10,
-  },
-  noteCardButton: {
-    flex: 1,
-  },
-  deleteButton: {
-    minWidth: 72,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: "#B91C1C",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  deleteButtonText: {
-    color: "#FFFFFF",
-    fontWeight: "700",
+  date: {
+    marginTop: 6,
+    fontSize: 12,
+    color: "#999",
   },
 });

@@ -9,31 +9,39 @@ import {
   Text,
   View,
 } from "react-native";
-
 import { NoteCard } from "../components/NoteCard";
 import { initDatabase } from "../services/db/database";
-import {
-  createEmptyNote,
-  deleteNote,
-  getAllNotes,
-} from "../services/db/notesRepository";
+import { createEmptyNote, getAllNotes } from "../services/db/notesRepository";
+import { hasSessionMasterKey } from "../services/secureStore/keyStore";
 import type { Note } from "../types/note";
 
 export default function HomeScreen() {
   const router = useRouter();
 
   const [notes, setNotes] = useState<Note[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [vaultUnlocked, setVaultUnlocked] = useState(false);
 
   async function loadNotes() {
     try {
       setLoading(true);
+
       await initDatabase();
 
-      const notes = await getAllNotes();
-      setNotes(notes);
+      const unlocked = hasSessionMasterKey();
+      setVaultUnlocked(unlocked);
+
+      if (!unlocked) {
+        console.log("Vault locked. Notes not decrypted.");
+        setNotes([]);
+        return;
+      }
+
+      const result = await getAllNotes();
+      setNotes(result);
     } catch (error) {
-      console.error("Failed to load notes:", error);
+      console.error("HOME LOAD ERROR:", error);
+      Alert.alert("Load Failed", String(error));
     } finally {
       setLoading(false);
     }
@@ -41,41 +49,19 @@ export default function HomeScreen() {
 
   async function handleCreateNote() {
     try {
+      await initDatabase();
+
+      if (!hasSessionMasterKey()) {
+        router.push("/unlock");
+        return;
+      }
+
       const note = await createEmptyNote();
-
-      setNotes((currentNotes) => [note, ...currentNotes]);
-
-      router.push({
-        pathname: "/note/[id]",
-        params: { id: note.id },
-      });
+      router.push(`/note/${note.id}`);
     } catch (error) {
-      console.error("Failed to create note:", error);
+      console.error("CREATE NOTE ERROR:", error);
+      Alert.alert("Create Note Failed", String(error));
     }
-  }
-
-  function handleDeleteNote(id: string) {
-    Alert.alert("Hapus note?", "Note ini akan dihapus permanen.", [
-      {
-        text: "Batal",
-        style: "cancel",
-      },
-      {
-        text: "Hapus",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            await deleteNote(id);
-
-            setNotes((currentNotes) =>
-              currentNotes.filter((note) => note.id !== id),
-            );
-          } catch (error) {
-            console.error("Failed to delete note:", error);
-          }
-        },
-      },
-    ]);
   }
 
   useFocusEffect(
@@ -84,11 +70,54 @@ export default function HomeScreen() {
     }, []),
   );
 
-  if (loading) {
+  function renderContent() {
+    if (!vaultUnlocked) {
+      return (
+        <View style={styles.center}>
+          <Text style={styles.emptyTitle}>Vault Locked</Text>
+          <Text style={styles.emptyText}>
+            Masukkan master key untuk membuka dan decrypt notes.
+          </Text>
+
+          <Pressable
+            style={styles.unlockButton}
+            onPress={() => router.push("/unlock")}
+          >
+            <Text style={styles.unlockButtonText}>Unlock Vault</Text>
+          </Pressable>
+        </View>
+      );
+    }
+
+    if (loading) {
+      return (
+        <View style={styles.center}>
+          <ActivityIndicator />
+          <Text style={styles.loadingText}>Loading notes...</Text>
+        </View>
+      );
+    }
+
+    if (notes.length === 0) {
+      return (
+        <View style={styles.center}>
+          <Text style={styles.emptyTitle}>No Notes Yet</Text>
+          <Text style={styles.emptyText}>Tap + to create your first note.</Text>
+        </View>
+      );
+    }
+
     return (
-      <View style={styles.center}>
-        <ActivityIndicator />
-      </View>
+      <FlatList
+        data={notes}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => (
+          <NoteCard
+            note={item}
+            onPress={() => router.push(`/note/${item.id}`)}
+          />
+        )}
+      />
     );
   }
 
@@ -102,41 +131,17 @@ export default function HomeScreen() {
         </Pressable>
       </View>
 
-      <FlatList
-        data={notes}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={notes.length === 0 ? styles.empty : undefined}
-        ListEmptyComponent={
-          <View>
-            <Text style={styles.emptyTitle}>Belum ada note</Text>
-            <Text style={styles.emptyText}>
-              Tekan tombol + untuk membuat note.
-            </Text>
-          </View>
-        }
-        renderItem={({ item }) => (
-          <View style={styles.noteRow}>
-            <Pressable
-              style={styles.noteCardButton}
-              onPress={() =>
-                router.push({
-                  pathname: "/note/[id]",
-                  params: { id: item.id },
-                })
-              }
-            >
-              <NoteCard note={item} />
-            </Pressable>
+      <View style={styles.menuRow}>
+        <Pressable onPress={() => router.push("/benchmark")}>
+          <Text style={styles.menuLink}>Benchmark</Text>
+        </Pressable>
 
-            <Pressable
-              style={styles.deleteButton}
-              onPress={() => handleDeleteNote(item.id)}
-            >
-              <Text style={styles.deleteButtonText}>Hapus</Text>
-            </Pressable>
-          </View>
-        )}
-      />
+        <Pressable onPress={() => router.push("/settings")}>
+          <Text style={styles.menuLink}>Settings</Text>
+        </Pressable>
+      </View>
+
+      {renderContent()}
     </View>
   );
 }
@@ -144,26 +149,19 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 24,
-    backgroundColor: "#121212",
-  },
-  center: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#121212",
+    padding: 20,
+    backgroundColor: "#fff",
   },
   header: {
     marginTop: 12,
-    marginBottom: 16,
+    marginBottom: 12,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
   title: {
     fontSize: 34,
-    fontWeight: "700",
-    color: "#FFFFFF",
+    fontWeight: "800",
   },
   addButton: {
     width: 44,
@@ -174,45 +172,50 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   addButtonText: {
-    fontSize: 24,
-    color: "#121212",
-    fontWeight: "700",
+    fontSize: 30,
+    fontWeight: "600",
+    color: "#111",
+    marginTop: -2,
   },
-  noteRow: {
+  menuRow: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    marginBottom: 12,
+    marginBottom: 20,
   },
-  noteCardButton: {
+  menuLink: {
+    fontSize: 16,
+    color: "#007AFF",
+    fontWeight: "600",
+    marginRight: 16,
+  },
+  center: {
     flex: 1,
-  },
-  noteContent: {
-    flex: 1,
-  },
-  deleteButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    backgroundColor: "#3A1F1F",
-  },
-  deleteButtonText: {
-    color: "#FF6B6B",
-    fontWeight: "700",
-  },
-  empty: {
-    flexGrow: 1,
     alignItems: "center",
     justifyContent: "center",
+  },
+  loadingText: {
+    marginTop: 8,
+    color: "#999",
   },
   emptyTitle: {
     fontSize: 22,
     fontWeight: "700",
     marginBottom: 6,
-    color: "#FFFFFF",
   },
   emptyText: {
     fontSize: 15,
     color: "#777",
+    textAlign: "center",
+    marginBottom: 16,
+  },
+  unlockButton: {
+    backgroundColor: "#111",
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  unlockButtonText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "700",
   },
 });
