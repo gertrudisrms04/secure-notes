@@ -25,7 +25,7 @@ function getSubtleCrypto(): SubtleCrypto {
 
   if (!subtle) {
     throw new Error(
-      "WebCrypto crypto.subtle tidak tersedia. AES-RSA benchmark disarankan dijalankan di browser/web."
+      "WebCrypto crypto.subtle tidak tersedia. AES-RSA benchmark disarankan dijalankan di browser/web.",
     );
   }
 
@@ -68,7 +68,7 @@ function hexToBytes(hex: string): Uint8Array {
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return bytes.buffer.slice(
     bytes.byteOffset,
-    bytes.byteOffset + bytes.byteLength
+    bytes.byteOffset + bytes.byteLength,
   ) as ArrayBuffer;
 }
 
@@ -83,7 +83,7 @@ export async function generateRSAKeyPair(): Promise<RSAKeyPair> {
       hash: "SHA-256",
     },
     true,
-    ["encrypt", "decrypt"]
+    ["encrypt", "decrypt"],
   );
 
   return {
@@ -94,7 +94,7 @@ export async function generateRSAKeyPair(): Promise<RSAKeyPair> {
 
 export async function encryptNoteKeyWithRSA(
   publicKey: CryptoKey,
-  noteKey: Uint8Array
+  noteKey: Uint8Array,
 ): Promise<string> {
   const subtle = getSubtleCrypto();
 
@@ -103,7 +103,7 @@ export async function encryptNoteKeyWithRSA(
       name: "RSA-OAEP",
     },
     publicKey,
-    toArrayBuffer(noteKey)
+    toArrayBuffer(noteKey),
   );
 
   return bytesToHex(new Uint8Array(encryptedKey));
@@ -111,7 +111,7 @@ export async function encryptNoteKeyWithRSA(
 
 export async function decryptNoteKeyWithRSA(
   privateKey: CryptoKey,
-  encryptedNoteKeyHex: string
+  encryptedNoteKeyHex: string,
 ): Promise<Uint8Array> {
   const subtle = getSubtleCrypto();
 
@@ -122,7 +122,7 @@ export async function decryptNoteKeyWithRSA(
       name: "RSA-OAEP",
     },
     privateKey,
-    toArrayBuffer(encryptedNoteKey)
+    toArrayBuffer(encryptedNoteKey),
   );
 
   return new Uint8Array(noteKey);
@@ -131,7 +131,7 @@ export async function decryptNoteKeyWithRSA(
 export async function encryptNoteWithAESRSA(
   title: string,
   body: string,
-  rsaKeyPair: RSAKeyPair
+  rsaKeyPair: RSAKeyPair,
 ): Promise<AESRSANote> {
   const noteKey = randomBytes(AES_KEY_SIZE);
   const noteIv = randomBytes(AES_GCM_IV_SIZE);
@@ -146,8 +146,8 @@ export async function encryptNoteWithAESRSA(
   const ciphertext = gcm(noteKey, noteIv).encrypt(plaintextBytes);
 
   const encryptedNoteKey = await encryptNoteKeyWithRSA(
-  rsaKeyPair.publicKey,
-  new Uint8Array(noteKey)
+    rsaKeyPair.publicKey,
+    new Uint8Array(noteKey),
   );
 
   return {
@@ -164,17 +164,17 @@ export async function encryptNoteWithAESRSA(
 
 export async function decryptNoteWithAESRSA(
   encryptedNote: AESRSANote,
-  rsaKeyPair: RSAKeyPair
+  rsaKeyPair: RSAKeyPair,
 ): Promise<{
   title: string;
   body: string;
   encryptedAt?: string;
 }> {
   const noteKey = new Uint8Array(
-  await decryptNoteKeyWithRSA(
-    rsaKeyPair.privateKey,
-    encryptedNote.encryptedNoteKey
-  )
+    await decryptNoteKeyWithRSA(
+      rsaKeyPair.privateKey,
+      encryptedNote.encryptedNoteKey,
+    ),
   );
 
   const noteIv = hexToBytes(encryptedNote.noteIv);

@@ -109,7 +109,7 @@ function generateECCPrivateKeyBytes(): Uint8Array {
 
 function deriveWrappingKey(
   privateKey: Uint8Array,
-  publicKey: Uint8Array
+  publicKey: Uint8Array,
 ): Uint8Array {
   const sharedSecret = p256.getSharedSecret(privateKey, publicKey);
 
@@ -118,7 +118,7 @@ function deriveWrappingKey(
     sharedSecret,
     undefined,
     utf8ToBytes("secure-notes-ecc-p256-aes-key-wrapping"),
-    AES_KEY_SIZE
+    AES_KEY_SIZE,
   );
 }
 
@@ -154,7 +154,7 @@ export async function initVault(): Promise<void> {
 
 export async function encryptNote(
   title: string,
-  body: string
+  body: string,
 ): Promise<EncryptedNote> {
   const vaultKeyPair = await getOrCreateVaultECCKeyPair();
 
@@ -175,7 +175,7 @@ export async function encryptNote(
 
   const wrappingKey = deriveWrappingKey(
     ephemeralPrivateKey,
-    vaultKeyPair.publicKey
+    vaultKeyPair.publicKey,
   );
 
   const keyIv = randomBytes(AES_GCM_IV_SIZE);
@@ -198,7 +198,7 @@ export async function encryptNote(
 }
 
 export async function decryptNote(
-  encryptedNote: EncryptedNote
+  encryptedNote: EncryptedNote,
 ): Promise<DecryptedNote> {
   const vaultKeyPair = await getOrCreateVaultECCKeyPair();
 
@@ -206,7 +206,7 @@ export async function decryptNote(
 
   const wrappingKey = deriveWrappingKey(
     vaultKeyPair.privateKey,
-    ephemeralPublicKey
+    ephemeralPublicKey,
   );
 
   const keyIv = hexToBytes(encryptedNote.keyIv);
@@ -236,7 +236,7 @@ export function generateECCKeyPair(): ECCKeyPair {
 
 export function deriveSharedSecret(
   privateKeyHex: string,
-  publicKeyHex: string
+  publicKeyHex: string,
 ): string {
   const privateKey = hexToBytes(privateKeyHex);
   const publicKey = hexToBytes(publicKeyHex);

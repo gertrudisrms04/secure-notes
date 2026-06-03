@@ -2,7 +2,7 @@ import { getDatabase } from "./database";
 import { createId } from "../../utils/id";
 import { nowIso } from "../../utils/date";
 import type { EncryptedNoteRow, Note } from "../../types/note";
-import { decryptNoteRow, encryptNoteContent } from "../crypto/cryptoService";
+import { decryptNoteRow, encryptNoteContent } from "../crypto/crypto";
 
 export async function getAllNotes(): Promise<Note[]> {
   const db = await getDatabase();
