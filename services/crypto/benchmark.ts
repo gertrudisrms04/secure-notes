@@ -1,12 +1,7 @@
-import { encryptNote, decryptNote } from "./aesecc";
-import {
-  encryptNoteWithAESRSA,
-  decryptNoteWithAESRSA,
-  generateRSAKeyPair,
-} from "./aesrsa";
+import { encryptNote, decryptNote } from "./crypto";
 
 export type BenchmarkResult = {
-  method: "AES-ECC" | "AES-RSA";
+  method: "AES-GCM";
   noteSize: number;
 
   encryptTimeMs: number;
@@ -36,21 +31,10 @@ function getObjectSizeBytes(obj: unknown): number {
   return new TextEncoder().encode(JSON.stringify(obj)).length;
 }
 
-/**
- * Karena ciphertext dan encryptedNoteKey disimpan dalam bentuk hex,
- * 2 karakter hex = 1 byte.
- */
-function getHexSizeBytes(hex: string): number {
-  return Math.ceil(hex.length / 2);
+function getBase64SizeBytes(base64: string): number {
+  return Math.ceil((base64.length * 3) / 4);
 }
 
-/**
- * performance.memory hanya tersedia di beberapa browser berbasis Chromium.
- * Kalau tidak tersedia, hasil memory akan null.
- *
- * Ini tetap aman untuk laporan, karena bisa ditulis sebagai keterbatasan
- * pengukuran memori pada environment tertentu.
- */
 function getMemoryMB(): number | null {
   const performanceWithMemory = performance as Performance & {
     memory?: {
@@ -78,8 +62,8 @@ function countMemoryDelta(
   return Number((after - before).toFixed(4));
 }
 
-async function benchmarkAESECC(noteSize: number): Promise<BenchmarkResult> {
-  const title = `AES-ECC-${noteSize}`;
+async function benchmarkAESGCM(noteSize: number): Promise<BenchmarkResult> {
+  const title = `AES-GCM-${noteSize}`;
   const body = generateNoteBody(noteSize);
 
   const memoryBefore = getMemoryMB();
@@ -97,7 +81,7 @@ async function benchmarkAESECC(noteSize: number): Promise<BenchmarkResult> {
   const memoryAfterDecrypt = getMemoryMB();
 
   return {
-    method: "AES-ECC",
+    method: "AES-GCM",
     noteSize,
 
     encryptTimeMs: Number((encryptEnd - encryptStart).toFixed(3)),
@@ -105,48 +89,8 @@ async function benchmarkAESECC(noteSize: number): Promise<BenchmarkResult> {
     totalTimeMs: Number((decryptEnd - encryptStart).toFixed(3)),
 
     encryptedPayloadSizeBytes: getObjectSizeBytes(encrypted),
-    ciphertextSizeBytes: getHexSizeBytes(encrypted.ciphertext),
-    encryptedNoteKeySizeBytes: getHexSizeBytes(encrypted.encryptedNoteKey),
-
-    memoryBeforeMB: memoryBefore,
-    memoryAfterEncryptMB: memoryAfterEncrypt,
-    memoryAfterDecryptMB: memoryAfterDecrypt,
-    memoryDeltaEncryptMB: countMemoryDelta(memoryBefore, memoryAfterEncrypt),
-    memoryDeltaTotalMB: countMemoryDelta(memoryBefore, memoryAfterDecrypt),
-  };
-}
-
-async function benchmarkAESRSA(noteSize: number): Promise<BenchmarkResult> {
-  const title = `AES-RSA-${noteSize}`;
-  const body = generateNoteBody(noteSize);
-
-  const rsaKeyPair = await generateRSAKeyPair();
-
-  const memoryBefore = getMemoryMB();
-
-  const encryptStart = now();
-  const encrypted = await encryptNoteWithAESRSA(title, body, rsaKeyPair);
-  const encryptEnd = now();
-
-  const memoryAfterEncrypt = getMemoryMB();
-
-  const decryptStart = now();
-  await decryptNoteWithAESRSA(encrypted, rsaKeyPair);
-  const decryptEnd = now();
-
-  const memoryAfterDecrypt = getMemoryMB();
-
-  return {
-    method: "AES-RSA",
-    noteSize,
-
-    encryptTimeMs: Number((encryptEnd - encryptStart).toFixed(3)),
-    decryptTimeMs: Number((decryptEnd - decryptStart).toFixed(3)),
-    totalTimeMs: Number((decryptEnd - encryptStart).toFixed(3)),
-
-    encryptedPayloadSizeBytes: getObjectSizeBytes(encrypted),
-    ciphertextSizeBytes: getHexSizeBytes(encrypted.ciphertext),
-    encryptedNoteKeySizeBytes: getHexSizeBytes(encrypted.encryptedNoteKey),
+    ciphertextSizeBytes: getBase64SizeBytes(encrypted.ciphertext),
+    encryptedNoteKeySizeBytes: 0,
 
     memoryBeforeMB: memoryBefore,
     memoryAfterEncryptMB: memoryAfterEncrypt,
@@ -161,8 +105,7 @@ export async function runCryptoBenchmark(): Promise<BenchmarkResult[]> {
   const results: BenchmarkResult[] = [];
 
   for (const size of noteSizes) {
-    results.push(await benchmarkAESECC(size));
-    results.push(await benchmarkAESRSA(size));
+    results.push(await benchmarkAESGCM(size));
   }
 
   console.table(results);
