@@ -1,12 +1,121 @@
 import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
+import * as ExpoCrypto from "expo-crypto";
+
 import { gcm } from "@noble/ciphers/aes.js";
-import { randomBytes } from "@noble/ciphers/webcrypto.js";
 import { utf8ToBytes, bytesToUtf8 } from "@noble/ciphers/utils.js";
 import { p256 } from "@noble/curves/nist.js";
 import { hkdf } from "@noble/hashes/hkdf.js";
 import { sha256 } from "@noble/hashes/sha2.js";
+
+import type { EncryptedNoteRow, Note } from "../../types/note";
+
 const MASTER_KEY_STORAGE_KEY = "secure_notes_master_key";
+
+function randomBytes(length: number): Uint8Array {
+  const bytes = new Uint8Array(length);
+  return ExpoCrypto.getRandomValues(bytes);
+}
+
+type EncryptedNoteContent = {
+  encryptedTitle: string;
+  encryptedBody: string;
+  titleIv: string;
+  bodyIv: string;
+  titleAuthTag: string;
+  bodyAuthTag: string;
+};
+
+function splitCiphertextAndTag(encrypted: Uint8Array) {
+  const tagLength = 16;
+
+  return {
+    ciphertext: encrypted.slice(0, encrypted.length - tagLength),
+    authTag: encrypted.slice(encrypted.length - tagLength),
+  };
+}
+
+function combineCiphertextAndTag(ciphertext: Uint8Array, authTag: Uint8Array) {
+  const combined = new Uint8Array(ciphertext.length + authTag.length);
+  combined.set(ciphertext, 0);
+  combined.set(authTag, ciphertext.length);
+  return combined;
+}
+
+async function encryptTextField(text: string) {
+  const masterKey = await getOrCreateMasterKey();
+  const iv = randomBytes(12);
+
+  const encrypted = gcm(masterKey, iv).encrypt(utf8ToBytes(text));
+  const { ciphertext, authTag } = splitCiphertextAndTag(encrypted);
+
+  return {
+    ciphertext: bytesToBase64(ciphertext),
+    iv: bytesToBase64(iv),
+    authTag: bytesToBase64(authTag),
+  };
+}
+
+async function decryptTextField(
+  ciphertextBase64: string | null,
+  ivBase64: string | null,
+  authTagBase64: string | null,
+) {
+  if (ciphertextBase64 == null || ivBase64 == null || authTagBase64 == null) {
+    throw new Error("Missing encrypted note fields");
+  }
+
+  const masterKey = await getOrCreateMasterKey();
+
+  const ciphertext = base64ToBytes(ciphertextBase64);
+  const iv = base64ToBytes(ivBase64);
+  const authTag = base64ToBytes(authTagBase64);
+
+  const encrypted = combineCiphertextAndTag(ciphertext, authTag);
+  const plaintextBytes = gcm(masterKey, iv).decrypt(encrypted);
+
+  return bytesToUtf8(plaintextBytes);
+}
+
+export async function encryptNoteContent(
+  title: string,
+  body: string,
+): Promise<EncryptedNoteContent> {
+  const encryptedTitle = await encryptTextField(title);
+  const encryptedBody = await encryptTextField(body);
+
+  return {
+    encryptedTitle: encryptedTitle.ciphertext,
+    encryptedBody: encryptedBody.ciphertext,
+    titleIv: encryptedTitle.iv,
+    bodyIv: encryptedBody.iv,
+    titleAuthTag: encryptedTitle.authTag,
+    bodyAuthTag: encryptedBody.authTag,
+  };
+}
+
+export async function decryptNoteRow(row: EncryptedNoteRow): Promise<Note> {
+  const title = await decryptTextField(
+    row.encryptedTitle,
+    row.titleIv,
+    row.titleAuthTag,
+  );
+
+  const body = await decryptTextField(
+    row.encryptedBody,
+    row.bodyIv,
+    row.bodyAuthTag,
+  );
+
+  return {
+    id: row.id,
+    title,
+    body,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    pinned: Boolean(row.pinned),
+  };
+}
 
 export type EncryptedNote = {
   iv: string;
@@ -120,11 +229,10 @@ export async function decryptNote(
 }
 
 export function generateECCKeyPair() {
-  const privateKey = p256.utils.randomPrivateKey();
-  const publicKey = p256.getPublicKey(privateKey);
+  const { secretKey, publicKey } = p256.keygen();
 
   return {
-    privateKey: bytesToBase64(privateKey),
+    privateKey: bytesToBase64(secretKey),
     publicKey: bytesToBase64(publicKey),
   };
 }

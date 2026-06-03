@@ -1,16 +1,22 @@
-import { Link, useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+
 import { NoteCard } from "../components/NoteCard";
 import { initDatabase } from "../services/db/database";
-import { createEmptyNote, getAllNotes } from "../services/db/notesRepository";
+import {
+  createEmptyNote,
+  deleteNote,
+  getAllNotes,
+} from "../services/db/notesRepository";
 import type { Note } from "../types/note";
 
 export default function HomeScreen() {
@@ -23,8 +29,9 @@ export default function HomeScreen() {
     try {
       setLoading(true);
       await initDatabase();
-      const result = await getAllNotes();
-      setNotes(result);
+
+      const notes = await getAllNotes();
+      setNotes(notes);
     } catch (error) {
       console.error("Failed to load notes:", error);
     } finally {
@@ -35,10 +42,40 @@ export default function HomeScreen() {
   async function handleCreateNote() {
     try {
       const note = await createEmptyNote();
-      router.push(`note/${note.id}`);
+
+      setNotes((currentNotes) => [note, ...currentNotes]);
+
+      router.push({
+        pathname: "/note/[id]",
+        params: { id: note.id },
+      });
     } catch (error) {
       console.error("Failed to create note:", error);
     }
+  }
+
+  function handleDeleteNote(id: string) {
+    Alert.alert("Hapus note?", "Note ini akan dihapus permanen.", [
+      {
+        text: "Batal",
+        style: "cancel",
+      },
+      {
+        text: "Hapus",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await deleteNote(id);
+
+            setNotes((currentNotes) =>
+              currentNotes.filter((note) => note.id !== id),
+            );
+          } catch (error) {
+            console.error("Failed to delete note:", error);
+          }
+        },
+      },
+    ]);
   }
 
   useFocusEffect(
@@ -47,43 +84,59 @@ export default function HomeScreen() {
     }, []),
   );
 
+  if (loading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Secure Notes</Text>
 
         <Pressable style={styles.addButton} onPress={handleCreateNote}>
-          <Text style={styles.addButtonText}>+ New Note</Text>
+          <Text style={styles.addButtonText}>+</Text>
         </Pressable>
       </View>
 
-      <View style={styles.nav}>
-        <Link href="/benchmark" style={styles.navLink}>
-          Benchmark
-        </Link>
-      </View>
+      <FlatList
+        data={notes}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={notes.length === 0 ? styles.empty : undefined}
+        ListEmptyComponent={
+          <View>
+            <Text style={styles.emptyTitle}>Belum ada note</Text>
+            <Text style={styles.emptyText}>
+              Tekan tombol + untuk membuat note.
+            </Text>
+          </View>
+        }
+        renderItem={({ item }) => (
+          <View style={styles.noteRow}>
+            <Pressable
+              style={styles.noteCardButton}
+              onPress={() =>
+                router.push({
+                  pathname: "/note/[id]",
+                  params: { id: item.id },
+                })
+              }
+            >
+              <NoteCard note={item} />
+            </Pressable>
 
-      {loading ? (
-        <ActivityIndicator />
-      ) : notes.length === 0 ? (
-        <View style={styles.empty}>
-          <Text style={styles.emptyTitle}>No Notes Yet</Text>
-          <Text style={styles.emptyText}>
-            Tap + to create your first note.
-          </Text>
-        </View>
-      ) : (
-        <FlatList
-          data={notes}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <NoteCard
-              note={item}
-              onPress={() => router.push(`/note/${item.id}`)}
-            />
-          )}
-        />
-      )}
+            <Pressable
+              style={styles.deleteButton}
+              onPress={() => handleDeleteNote(item.id)}
+            >
+              <Text style={styles.deleteButtonText}>Hapus</Text>
+            </Pressable>
+          </View>
+        )}
+      />
     </View>
   );
 }
@@ -93,11 +146,16 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 24,
     backgroundColor: "#121212",
+  },
+  center: {
+    flex: 1,
+    alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "#121212",
   },
   header: {
     marginTop: 12,
-    marginBottom: 12,
+    marginBottom: 16,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -105,7 +163,6 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 34,
     fontWeight: "700",
-    marginBottom: 8,
     color: "#FFFFFF",
   },
   addButton: {
@@ -119,18 +176,32 @@ const styles = StyleSheet.create({
   addButtonText: {
     fontSize: 24,
     color: "#121212",
+    fontWeight: "700",
   },
-  nav: {
+  noteRow: {
     flexDirection: "row",
-    gap: 16,
-    marginBottom: 16,
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 12,
   },
-  navLink: {
-    fontSize: 16,
-    color: "#FFD60A",
+  noteCardButton: {
+    flex: 1,
+  },
+  noteContent: {
+    flex: 1,
+  },
+  deleteButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: "#3A1F1F",
+  },
+  deleteButtonText: {
+    color: "#FF6B6B",
+    fontWeight: "700",
   },
   empty: {
-    flex: 1,
+    flexGrow: 1,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -138,17 +209,10 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: "700",
     marginBottom: 6,
+    color: "#FFFFFF",
   },
   emptyText: {
     fontSize: 15,
     color: "#777",
-  },
-  menu: {
-    marginTop: 16,
-    gap: 12,
-  },
-  link: {
-    fontSize: 18,
-    color: "#007AFF",
   },
 });
