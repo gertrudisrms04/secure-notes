@@ -1,5 +1,5 @@
 import * as Crypto from "expo-crypto";
-import * as SecureStore from "expo-secure-store";
+import { deleteSecureItem, getSecureItem, setSecureItem } from "./storage";
 import { utf8ToBytes } from "../../utils/encoding";
 
 const MASTER_KEY_CHECK_STORAGE_KEY = "secure_notes_master_key_check_v1";
@@ -12,39 +12,38 @@ async function deriveKeyFromInput(input: string): Promise<Uint8Array> {
     input,
   );
 
-  // SHA-256 hex panjangnya 64 char.
-  // Kita pakai bytes dari string hex sebagai demo key material.
   return utf8ToBytes(digestHex).slice(0, 32);
 }
 
 export async function unlockMasterKey(input: string): Promise<void> {
-  if (!input || input.length < 8) {
+  const trimmedInput = input.trim();
+
+  if (!trimmedInput || trimmedInput.length < 8) {
     throw new Error("Master key minimal 8 karakter.");
   }
 
-  const savedCheck = await SecureStore.getItemAsync(
-    MASTER_KEY_CHECK_STORAGE_KEY,
-  );
+  const savedCheck = await getSecureItem(MASTER_KEY_CHECK_STORAGE_KEY);
 
   const inputCheck = await Crypto.digestStringAsync(
     Crypto.CryptoDigestAlgorithm.SHA256,
-    `secure-notes-check:${input}`,
+    `secure-notes-check:${trimmedInput}`,
   );
 
-  // Pertama kali: master key dibuat dari input user.
   if (!savedCheck) {
-    await SecureStore.setItemAsync(MASTER_KEY_CHECK_STORAGE_KEY, inputCheck);
-    sessionMasterKey = await deriveKeyFromInput(input);
+    await setSecureItem(MASTER_KEY_CHECK_STORAGE_KEY, inputCheck);
+
+    sessionMasterKey = await deriveKeyFromInput(trimmedInput);
+
     console.log("Vault created and unlocked");
     return;
   }
 
-  // Berikutnya: input user harus cocok dengan check hash.
   if (inputCheck !== savedCheck) {
     throw new Error("Master key salah.");
   }
 
-  sessionMasterKey = await deriveKeyFromInput(input);
+  sessionMasterKey = await deriveKeyFromInput(trimmedInput);
+
   console.log("Vault unlocked");
 }
 
@@ -61,9 +60,7 @@ export function hasSessionMasterKey(): boolean {
 }
 
 export async function hasMasterKeySetup(): Promise<boolean> {
-  const savedCheck = await SecureStore.getItemAsync(
-    MASTER_KEY_CHECK_STORAGE_KEY,
-  );
+  const savedCheck = await getSecureItem(MASTER_KEY_CHECK_STORAGE_KEY);
 
   return Boolean(savedCheck);
 }
@@ -74,5 +71,6 @@ export function lockVault(): void {
 
 export async function deleteMasterKey(): Promise<void> {
   sessionMasterKey = null;
-  await SecureStore.deleteItemAsync(MASTER_KEY_CHECK_STORAGE_KEY);
+
+  await deleteSecureItem(MASTER_KEY_CHECK_STORAGE_KEY);
 }
