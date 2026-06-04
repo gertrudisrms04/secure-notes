@@ -103,11 +103,7 @@ export default function NoteEditorScreen() {
 
         await updateNoteContent(noteId, nextTitle, nextBody);
 
-        console.log("Note saved successfully:", {
-          id: noteId,
-          title: nextTitle,
-          body: nextBody,
-        });
+        console.log("Note saved successfully");
       } catch (error) {
         console.error("Failed to save note:", error);
         Alert.alert("Save Failed", String(error));
